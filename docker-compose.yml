@@ -1,0 +1,71 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: mfg_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: mfg_user
+      POSTGRES_PASSWORD: mfg_password
+      POSTGRES_DB: manufacturing_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+
+  backend:
+    build: ./backend
+    container_name: mfg_backend
+    restart: always
+    environment:
+      DB_URI: "postgresql+psycopg2://mfg_user:mfg_password@postgres:5432/manufacturing_db"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./etl:/etl
+      - ./ml:/ml
+    depends_on:
+      - postgres
+
+  frontend:
+    build: ./frontend
+    container_name: mfg_frontend
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+  superset:
+    build: ./superset
+    container_name: mfg_superset
+    restart: always
+    environment:
+      SUPERSET_SECRET_KEY: "factorypulse_superset_secret_key_2027_mfg"
+    ports:
+      - "8088:8088"
+    volumes:
+      - superset_home:/app/superset_home
+      - ./superset/superset_config.py:/app/superset_config.py
+    depends_on:
+      - postgres
+
+  legacy_dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mfg_legacy_dashboard
+    restart: always
+    environment:
+      DB_URI: "postgresql+psycopg2://mfg_user:mfg_password@postgres:5432/manufacturing_db"
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./dashboard.py:/app/dashboard.py
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:
+  superset_home:
