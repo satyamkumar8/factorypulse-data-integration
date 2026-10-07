@@ -15,13 +15,13 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [lang, setLangState] = useState<Language>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved === 'th' || saved === 'en') {
+      if (saved === 'en') {
         return saved;
       }
     } catch {
       // ignore
     }
-    return 'th'; // Default to Thai as requested
+    return 'en'; // Default to English
   });
 
   const setLang = (newLang: Language) => {

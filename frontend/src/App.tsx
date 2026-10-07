@@ -4,13 +4,10 @@ import { Navbar } from './components/Navbar';
 import { HomePage } from './pages/HomePage';
 import { MonitorPage } from './pages/MonitorPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
-import { OperationsPage } from './pages/OperationsPage';
 import { MachineHealth, TelemetryEvent, HourlyOEE, KPISummary } from './types';
-import { audioAlert } from './utils/audioAlert';
-import { LanguageProvider, useLanguage } from './context/LanguageContext';
+import { LanguageProvider } from './context/LanguageContext';
 
 const AppContent: React.FC = () => {
-  const { t } = useLanguage();
   const [machines, setMachines] = useState<MachineHealth[]>([]);
   const [events, setEvents] = useState<TelemetryEvent[]>([]);
   const [newEventIds, setNewEventIds] = useState<Set<number>>(new Set());
@@ -20,16 +17,14 @@ const AppContent: React.FC = () => {
   const [oeeData, setOeeData] = useState<HourlyOEE[]>([]);
   const [kpi, setKpi] = useState<KPISummary | null>(null);
 
-  const [wsConnected, setWsConnected] = useState<boolean>(false);
-  const [selectedLine, setSelectedLine] = useState<string>('ALL');
+  const selectedLine = 'ALL';
   const [selectedMachineFilter, setSelectedMachineFilter] = useState<string | null>(null);
-  
   const [isAlertDismissed, setIsAlertDismissed] = useState<boolean>(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Fetch all data (respecting selectedLine filter)
+  // Fetch all core data from FastAPI backend
   const fetchAllData = useCallback(async (overrideLine?: string) => {
     const activeLine = overrideLine !== undefined ? overrideLine : selectedLine;
     const lineParam = activeLine !== 'ALL' ? `?line_id=${activeLine}` : '';
@@ -52,14 +47,7 @@ const AppContent: React.FC = () => {
     }
   }, [selectedLine]);
 
-  // When line filter changes, refresh scoped data immediately
-  const handleSelectLine = (line: string) => {
-    setSelectedLine(line);
-    setSelectedMachineFilter(null);
-    fetchAllData(line);
-  };
-
-  // Clear simulated telemetry feed and reset sequence to #1
+  // Clear simulated telemetry feed
   const handleClearTelemetry = async () => {
     try {
       const res = await fetch('/api/telemetry', { method: 'DELETE' });
@@ -67,7 +55,6 @@ const AppContent: React.FC = () => {
         setEvents([]);
         setNewEventIds(new Set());
         setActiveUpdateKeys(new Set());
-        audioAlert.playAlarm('success');
         fetchAllData();
         return true;
       }
@@ -83,7 +70,6 @@ const AppContent: React.FC = () => {
       const res = await fetch('/api/oee', { method: 'DELETE' });
       if (res.ok) {
         setOeeData([]);
-        audioAlert.playAlarm('success');
         fetchAllData();
         return true;
       }
@@ -111,8 +97,6 @@ const AppContent: React.FC = () => {
 
         ws.onopen = () => {
           if (!isMounted) return;
-          console.log("Connected to Real-Time Telemetry Stream via WebSocket");
-          setWsConnected(true);
         };
 
         ws.onmessage = (messageEvent) => {
@@ -127,32 +111,19 @@ const AppContent: React.FC = () => {
             } else if (payload.type === 'NEW_TELEMETRY') {
               const newItems: TelemetryEvent[] = payload.events || [];
               if (newItems.length > 0) {
-                // Highlight new rows in table
                 const ids = new Set(newItems.map(e => e.event_id));
                 setNewEventIds(ids);
-                setTimeout(() => setNewEventIds(new Set()), 2500);
+                setTimeout(() => setNewEventIds(new Set()), 2000);
 
-                // Highlight active machine card(s) that just ingested
                 const machineKeys = new Set(newItems.map(e => `${e.line_id}_${e.machine_id}`));
                 setActiveUpdateKeys(machineKeys);
-                setTimeout(() => setActiveUpdateKeys(new Set()), 3500);
+                setTimeout(() => setActiveUpdateKeys(new Set()), 2500);
 
-                // Prepend new events and maintain limit
                 setEvents((prev) => {
                   const existingIds = new Set(newItems.map(x => x.event_id));
                   const filteredPrev = prev.filter(x => !existingIds.has(x.event_id));
                   return [...newItems, ...filteredPrev].slice(0, 100);
                 });
-
-                // Check for alerts to play sound
-                const hasBreakdown = newItems.some(e => e.category === 'Unplanned Downtime');
-                const hasDefect = newItems.some(e => e.defect_units > 0);
-                if (hasBreakdown) {
-                  audioAlert.playAlarm('breakdown');
-                  setIsAlertDismissed(false);
-                } else if (hasDefect) {
-                  audioAlert.playAlarm('defect');
-                }
               }
             } else if (payload.type === 'MACHINES_UPDATE') {
               if (payload.machines) setMachines(payload.machines);
@@ -176,24 +147,19 @@ const AppContent: React.FC = () => {
 
         ws.onclose = () => {
           if (!isMounted) return;
-          console.warn("WebSocket closed. Attempting reconnect in 3s...");
-          setWsConnected(false);
           reconnectTimeoutRef.current = setTimeout(connectWebSocket, 3000);
         };
 
-        ws.onerror = (err) => {
-          console.warn("WebSocket error:", err);
+        ws.onerror = () => {
           ws.close();
         };
-      } catch (e) {
-        console.warn("Failed to initiate WebSocket:", e);
+      } catch {
         reconnectTimeoutRef.current = setTimeout(connectWebSocket, 4000);
       }
     };
 
     connectWebSocket();
 
-    // Fallback polling for OEE hourly data (every 15s)
     const intervalOee = setInterval(() => {
       fetch('/api/oee/hourly')
         .then(res => res.json())
@@ -212,20 +178,12 @@ const AppContent: React.FC = () => {
   }, [fetchAllData, selectedLine]);
 
   return (
-    <div className="min-h-screen bg-[#050811] text-slate-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white relative">
-      {/* Ambient Radial Lighting Glow */}
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[1100px] h-[500px] bg-gradient-to-b from-emerald-500/[0.08] via-teal-500/[0.04] to-transparent blur-[140px] pointer-events-none -z-10" />
+    <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-white">
+      {/* Minimal Top Navbar */}
+      <Navbar />
 
-      {/* Top Navbar */}
-      <Navbar
-        wsConnected={wsConnected}
-        selectedLine={selectedLine}
-        onSelectLine={handleSelectLine}
-        onRefreshAll={() => fetchAllData()}
-      />
-
-      {/* Main Routed Content Area */}
-      <main className="flex-1 w-full pb-12">
+      {/* Main Routed Content */}
+      <main className="flex-1 w-full pb-10">
         <Routes>
           <Route path="/" element={<HomePage kpi={kpi} />} />
           <Route
@@ -259,28 +217,20 @@ const AppContent: React.FC = () => {
               />
             }
           />
-          <Route
-            path="/operations"
-            element={
-              <OperationsPage
-                onRefreshAll={() => fetchAllData()}
-              />
-            }
-          />
           {/* Fallback to Home */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
 
-      {/* 21st.dev Style Dark Footer */}
-      <footer className="border-t border-white/[0.08] bg-[#050811]/90 backdrop-blur-xl px-6 py-4 text-xs font-mono text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
-        <div className="flex items-center space-x-3">
-          <span className="font-semibold text-slate-300">{t.footer.appName}</span>
+      {/* Clean Footer */}
+      <footer className="border-t border-white/[0.08] bg-[#070b14] px-6 py-4 text-xs font-mono text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2 max-w-7xl mx-auto w-full">
+        <div className="flex items-center space-x-2">
+          <span className="font-semibold text-slate-300">FactoryPulse</span>
           <span>•</span>
-          <span className="text-emerald-400 font-medium">{t.footer.techStack}</span>
+          <span className="text-emerald-400 font-medium">Manufacturing Data Integration Platform</span>
         </div>
         <div className="text-slate-500 text-[11px]">
-          {t.footer.dbStatus}
+          PostgreSQL 15 · FastAPI · Apache Superset · React
         </div>
       </footer>
     </div>
