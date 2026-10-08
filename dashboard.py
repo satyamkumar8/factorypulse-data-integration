@@ -7,7 +7,7 @@ from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="Industrial Real-Time & OEE Monitor", layout="wide")
 
-# Auto Refresh หน้าจออัตโนมัติทุกๆ 3 วินาที
+# Auto-refresh display every 3 seconds
 count = st_autorefresh(interval=3000, limit=None, key="live_refresh_counter")
 
 DEFAULT_URI = "postgresql+psycopg2://mfg_user:mfg_password@localhost:5432/manufacturing_db"
@@ -22,7 +22,7 @@ st.caption(f"⚡ Live Polling Active (Cycle #{count}) — Updating every 3s")
 # ----------------------------------------------------
 try:
     with engine.connect() as conn:
-        # ดึงสถานะล่าสุดของเครื่องจักรทุกตัว พร้อมคะแนน Predictive Health และเซนเซอร์กายภาพ
+        # Fetch latest status of all machines, along with Predictive Health scores and physical sensor readings
         latest_machines_df = pd.read_sql("""
             WITH ranked AS (
                 SELECT 
@@ -65,7 +65,7 @@ try:
             ORDER BY r.line_id, r.machine_id;
         """, conn)
 
-        # ดึง 10 Events ล่าสุดสำหรับ Live Table Feed พร้อมค่าเซนเซอร์
+        # Fetch latest 10 events for live table feed with sensor readings
         live_df = pd.read_sql("""
             SELECT 
                 t.event_id,
@@ -85,7 +85,7 @@ try:
             LIMIT 10;
         """, conn)
 
-        # ดึง Historical OEE จาก Data Mart
+        # Fetch historical OEE from Data Mart
         oee_df = pd.read_sql("""
             SELECT 
                 hour_bucket,
@@ -107,7 +107,7 @@ except Exception as e:
     st.stop()
 
 # ----------------------------------------------------
-# 2. Live Machine Status Cards (ล็อกแถว 4 ช่องคงที่)
+# 2. Live Machine Status Cards (fixed 4-column layout)
 # ----------------------------------------------------
 st.subheader("🔴 Live Machine Health")
 

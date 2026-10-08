@@ -21,12 +21,12 @@ GROUP BY t.line_id, t.machine_id, r.status_name, r.category
 ORDER BY total_lost_time_seconds DESC
 
 /* 
-๋How to run this script:
+How to run this script:
     docker compose up -d 
     .\.venv\Scripts\python simulator.py
     Get-Content analysis_kpi.sql | docker exec -i mfg_postgres psql -U mfg_user -d manufacturing_db
 
-็How to stop the containers:
+How to stop the containers:
     .\.venv\Scripts\python simulator.py --stop
     docker compose stop
     docker compose down

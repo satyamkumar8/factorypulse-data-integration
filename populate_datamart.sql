@@ -1,4 +1,4 @@
--- คำนวณ Metric รายชั่วโมง และ Upsert ข้อมูลลง Data Mart Table
+-- Calculate hourly metrics and upsert data into Data Mart table
 INSERT INTO hourly_production_summary (
     hour_bucket,
     line_id,
@@ -26,13 +26,13 @@ WITH raw_metrics AS (
         SUM(t.defect_units) AS total_defect_units,
         SUM(t.good_units + t.defect_units) AS total_produced_units,
         
-        -- รวมเวลาตามประเภทสถานะ
+        -- Aggregate time by status category
         SUM(CASE WHEN t.status_code = 1 THEN t.cycle_time_sec ELSE 0 END) AS operating_time_sec,
         SUM(CASE WHEN r.category = 'Unplanned Downtime' THEN t.cycle_time_sec ELSE 0 END) AS unplanned_downtime_sec,
         SUM(CASE WHEN r.category = 'Planned Maintenance' THEN t.cycle_time_sec ELSE 0 END) AS planned_downtime_sec,
         SUM(CASE WHEN r.category = 'Idle' THEN t.cycle_time_sec ELSE 0 END) AS idle_time_sec,
         
-        -- กำหนด Ideal Cycle Time ต่อชิ้นตามประเภทเครื่องจักร
+        -- Define Ideal Cycle Time per unit by machine type
         CASE 
             WHEN t.machine_id = 'CNC_A' THEN 12.0
             WHEN t.machine_id = 'CNC_B' THEN 15.0

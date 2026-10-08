@@ -16,13 +16,13 @@ def job():
     except Exception as e:
         logging.error(f"Scheduled job execution failed: {e}")
 
-# กำหนดให้ทำงานทุกๆ 1 นาที (จำลองรอบ Batch สรุปข้อมูล)
+# Schedule to run every 1 minute (simulate batch aggregation cycle)
 schedule.every(1).minutes.do(job)
 
 if __name__ == "__main__":
-    # ติดตั้ง library schedule ก่อนใช้งาน: pip install schedule
+    # Install schedule library before use: pip install schedule
     logging.info("Batch ETL Scheduler initialized. Running every 1 minute. (Press Ctrl+C to stop)")
-    job() # รันทันที 1 รอบแรกเมื่อเริ่มทำงาน
+    job() # Run first cycle immediately on startup
     while True:
         schedule.run_pending()
         time.sleep(1)

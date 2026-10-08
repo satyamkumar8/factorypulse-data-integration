@@ -1,4 +1,4 @@
--- สร้างตาราง Data Mart สำหรับเก็บข้อมูลสรุปรายชั่วโมง
+-- Create Data Mart table for storing hourly summary metrics
 CREATE TABLE IF NOT EXISTS hourly_production_summary (
     summary_id SERIAL PRIMARY KEY,
     hour_bucket TIMESTAMP NOT NULL,
@@ -20,6 +20,6 @@ CREATE TABLE IF NOT EXISTS hourly_production_summary (
     CONSTRAINT unique_hour_line_machine UNIQUE (hour_bucket, line_id, machine_id)
 );
 
--- สร้าง Index เพื่อเพิ่มความเร็วในการ Query สรุปผลตามช่วงเวลา
+-- Create Index to speed up summary queries by time range
 CREATE INDEX IF NOT EXISTS idx_datamart_hour ON hourly_production_summary(hour_bucket);
 CREATE INDEX IF NOT EXISTS idx_datamart_line_machine ON hourly_production_summary(line_id, machine_id); 

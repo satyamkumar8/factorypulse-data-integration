@@ -13,19 +13,19 @@ from typing import Dict, Any, Tuple
 
 class PredictiveQualityModel:
     """
-    โมเดลทำนายความน่าจะเป็นที่ชิ้นงานจะตกสเปก (Defect) ล่วงหน้าจากพารามิเตอร์เซนเซอร์
-    ออกแบบมารับมือกับ Extreme Class Imbalance ในสายการผลิตจริง
+    Model to predict defect probability in advance based on sensor parameters.
+    Engineered to handle extreme class imbalance in real-world production lines.
     """
     def __init__(self, random_state: int = 42):
         self.random_state = random_state
         self.model = None
         self.feature_names = None
-        self.decision_threshold = 0.35  # ปรับ Threshold ให้ไวขึ้นเพื่อลดโอกาสเกิด False Negative (ของเสียหลุด)
+        self.decision_threshold = 0.35  # Adjusted threshold for higher sensitivity to reduce False Negatives (escaped defects)
 
     def fit(self, X: pd.DataFrame, y: pd.Series) -> Dict[str, Any]:
         self.feature_names = list(X.columns)
         
-        # คำนวณอัตราส่วน Imbalance เพื่อกำหนด scale_pos_weight (Cost-Sensitive Weighting)
+        # Compute imbalance ratio for scale_pos_weight (Cost-Sensitive Weighting)
         pos_count = (y == 1).sum()
         neg_count = (y == 0).sum()
         scale_pos_weight = max(1.0, float(neg_count / max(1, pos_count)))
@@ -41,7 +41,7 @@ class PredictiveQualityModel:
         )
         self.model.fit(X, y)
 
-        # ประเมินผล In-Sample / Validation
+        # Evaluate In-Sample / Validation performance
         y_prob = self.model.predict_proba(X)[:, 1]
         y_pred = (y_prob >= self.decision_threshold).astype(int)
 
@@ -59,7 +59,7 @@ class PredictiveQualityModel:
 
     def predict_defect_probability(self, X: pd.DataFrame) -> float:
         """
-        คืนค่าความน่าจะเป็นที่ชิ้นงานจะมี Defect (0.0000 - 1.0000)
+        Returns the probability of a defect occurring (0.0000 - 1.0000).
         """
         if self.model is None:
             raise RuntimeError("Model must be fitted before prediction.")

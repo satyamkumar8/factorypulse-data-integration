@@ -51,7 +51,7 @@ def run_training_pipeline():
     logging.info("Step 2: Executing Time-Series Feature Engineering...")
     df_features = extract_batch_features(df_raw)
 
-    # กรองเฉพาะแถวที่ไม่มีค่า NaN ในฟีเจอร์
+    # Filter out rows containing NaN in feature columns
     df_clean = df_features.dropna(subset=FEATURE_COLUMNS).reset_index(drop=True)
     X = df_clean[FEATURE_COLUMNS]
     y_quality = (df_clean["defect_units"] > 0).astype(int)
@@ -63,7 +63,7 @@ def run_training_pipeline():
     # Step 3: Train Unsupervised Machine Health Model (Isolation Forest)
     # -------------------------------------------------------------
     logging.info("Step 3: Training Unsupervised Machine Health Anomaly Model...")
-    # กรองเฉพาะสภาวะเดินเครื่องปกติ (status_code = 1) เพื่อสร้าง Normal Baseline
+    # Filter strictly for normal operating conditions (status_code = 1) to build Normal Baseline
     X_normal = df_clean[df_clean["status_code"] == 1][FEATURE_COLUMNS]
     anomaly_model = MachineHealthAnomalyModel(contamination=0.03)
     anomaly_model.fit(X_normal)
@@ -76,7 +76,7 @@ def run_training_pipeline():
     # Step 4: Train Supervised Predictive Quality Model (LightGBM)
     # -------------------------------------------------------------
     logging.info("Step 4: Training Predictive Quality Classifier (Virtual Metrology)...")
-    # ใช้ Temporal Split (80% อดีตเทรน, 20% อนาคตทดสอบ) ป้องกัน Data Leakage
+    # Use Temporal Split (80% past for train, 20% future for test) to prevent data leakage
     split_idx = int(len(df_clean) * 0.8)
     X_train, X_val = X.iloc[:split_idx], X.iloc[split_idx:]
     y_train, y_val = y_quality.iloc[:split_idx], y_quality.iloc[split_idx:]
@@ -112,7 +112,7 @@ def run_training_pipeline():
     from ml.xai_engine import RootCauseExplainer
     explainer = RootCauseExplainer(quality_model)
     
-    # ดึง 20 รายการล่าสุดของแต่ละเครื่องจักรมาคำนวณและบันทึก
+    # Extract the 20 most recent records per machine for scoring and persistence
     recent_indices = df_clean.groupby(["line_id", "machine_id"]).tail(20).index
     records_to_insert = []
     

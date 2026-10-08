@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, text
 from ml.feature_engineering import extract_single_event_features, FEATURE_COLUMNS
 from ml.xai_engine import RootCauseExplainer
 
-# ตั้งค่า Logging Format
+# Configure logging format
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -20,13 +20,13 @@ logging.basicConfig(
 DB_URI = os.getenv("DB_URI", "postgresql+psycopg2://mfg_user:mfg_password@localhost:5432/manufacturing_db")
 engine = create_engine(DB_URI)
 
-# ตัวแปรจำสถานะของเสียสะสมต่อเนื่อง: key = "LINE_ID_MACHINE_ID", value = จำนวนครั้งที่ติดกัน
+# Variable tracking continuous accumulated defect count: key = "LINE_ID_MACHINE_ID", value = consecutive occurrence count
 consecutive_defects = defaultdict(int)
 
-# In-memory Rolling Feature Buffer: เก็บประวัติ 10 cycles ล่าสุดของแต่ละเครื่องจักร
+# In-memory rolling feature buffer: keep the last 10 cycles per machine
 machine_buffers = defaultdict(lambda: deque(maxlen=10))
 
-# โหลดโมเดล Machine Learning เข้า Memory สำหรับ Low-Latency Streaming Inference
+# Load Machine Learning models into memory for low‑latency streaming inference
 MODELS_DIR = os.path.join(os.path.dirname(__file__), "ml", "models")
 anomaly_model = None
 quality_model = None
@@ -51,7 +51,7 @@ def monitor_stream():
     
     last_processed_id = 0
 
-    # ดึง event_id ล่าสุดเป็นจุดเริ่มต้น เพื่อประมวลผลเฉพาะข้อมูลที่เข้ามาใหม่สดๆ
+    # Pull the latest event_id as the starting point to process only fresh incoming data
     try:
         with engine.connect() as conn:
             res = conn.execute(text("SELECT COALESCE(MAX(event_id), 0) FROM machine_telemetry;")).scalar()
@@ -114,14 +114,14 @@ def monitor_stream():
                 machine_key = f"{line}_{machine}"
 
                 # ----------------------------------------------------
-                # 1. Data Quality Gate: กรองและเตือนข้อมูลผิดปกติทางกายภาพ
+                # 1. Data Quality Gate: filter and alert on abnormal physical data
                 # ----------------------------------------------------
                 if cycle is None or cycle <= 0:
                     logging.error(f"[DATA QUALITY ERROR] Invalid cycle time ({cycle}s) at Event ID: {event_id}")
                     continue
 
                 # ----------------------------------------------------
-                # 2. Machine Learning Online Scoring (Health & Quality)
+                # 2. Machine Learning online scoring (Health & Quality)
                 # ----------------------------------------------------
                 health_index = 100.0
                 anomaly_score = 0.0
@@ -132,23 +132,23 @@ def monitor_stream():
 
                 if anomaly_model is not None and quality_model is not None:
                     try:
-                        # สกัด Real-Time Features จาก Sliding Window
+                        # Extract real‑time features from sliding window
                         features_df = extract_single_event_features(dict(row), list(machine_buffers[machine_key]))
                         
-                        # ทำนายคะแนนสุขภาพเครื่องจักร (Health Index 0-100%)
+                        # Predict machine health score (Health Index 0‑100 %)
                         health_index, anomaly_score, risk_level = anomaly_model.score_event(features_df)
                         
-                        # ทำนายความน่าจะเป็นของ Defect (Virtual Metrology)
+                        # Predict defect probability (Virtual Metrology)
                         defect_prob = quality_model.predict_defect_probability(features_df)
 
-                        # หากเครื่องจักรเริ่มมีความเสี่ยง หรือ Defect Prob สูง คำนวณ Explainable AI (SHAP)
+                        # If the machine shows risk or high defect probability, compute Explainable AI (SHAP)
                         if risk_level in ["WARNING", "CRITICAL"] or defect_prob >= 0.30:
                             if xai_explainer is not None:
                                 explanation = xai_explainer.explain_event(features_df, top_k=3)
                                 top_root_cause = explanation["top_root_cause"]
                                 root_cause_impact = explanation["top_impact"]
 
-                        # บันทึกผลลัพธ์ลง PostgreSQL Data Table
+                        # Log results into PostgreSQL data table
                         with engine.begin() as save_conn:
                             save_conn.execute(insert_score_query, {
                                 "line_id": line,
@@ -164,11 +164,11 @@ def monitor_stream():
                     except Exception as err:
                         logging.warning(f"ML Scoring skipped for event {event_id}: {err}")
 
-                # บันทึก Event ลง Buffer สำหรับการคำนวณใน Cycle ถัดไป
+                # Store event in buffer for next‑cycle calculations
                 machine_buffers[machine_key].append(dict(row))
 
                 # ----------------------------------------------------
-                # 3. Comprehensive Alert Dispatcher
+                # 3. Comprehensive alert dispatcher
                 # ----------------------------------------------------
                 if cat == "Unplanned Downtime":
                     logging.warning(

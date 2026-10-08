@@ -1,7 +1,7 @@
 import pandas as pd
 from sqlalchemy import create_engine
 
-# ตั้งค่าให้ Pandas แสดงคอลัมน์และตารางได้กว้างขึ้น
+# Configure Pandas to display wider columns and tables
 pd.set_option('display.max_columns', None)
 pd.set_option('display.width', 1000)
 
@@ -11,7 +11,7 @@ print("\n" + "="*80)
 print(" MANUFACTURING DATA MART: HOURLY OEE & PRODUCTION REPORT ")
 print("="*80)
 
-# Query ดึงข้อมูล OEE ครบ 3 เสาหลักจาก Data Mart Table
+# Query to fetch OEE data across all 3 pillars from Data Mart Table
 query = """
 SELECT 
     TO_CHAR(hour_bucket, 'YYYY-MM-DD HH24:MI') AS hour,
@@ -35,7 +35,7 @@ print("\n" + "-"*80)
 print(" LINE-LEVEL OEE BENCHMARK ")
 print("-"*80)
 
-# สรุป OEE เฉลี่ยรายสายการผลิต (Line ID)
+# Summarize average OEE by production line (Line ID)
 query_line_summary = """
 SELECT 
     line_id,

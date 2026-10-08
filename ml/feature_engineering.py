@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List, Any
 
-# ฟีเจอร์เซนเซอร์หลักทางกายภาพ
+# Primary physical sensor features
 RAW_SENSOR_COLS = [
     "cycle_time_sec",
     "vibration_rms",
@@ -20,7 +20,7 @@ RAW_SENSOR_COLS = [
     "hydraulic_pressure_bar"
 ]
 
-# รายชื่อฟีเจอร์สุดท้ายที่จะถูกส่งเข้าโมเดล ML ทั้งหมด
+# Final feature list passed to all ML models
 FEATURE_COLUMNS = [
     "cycle_time_sec",
     "vibration_rms",
@@ -34,26 +34,26 @@ FEATURE_COLUMNS = [
     "vibration_rms_roll_std_5",
     "bearing_temp_c_roll_mean_5",
     "motor_current_amp_roll_mean_5",
-    # Lagged Deltas (ความแตกต่างจาก 1 cycle ก่อนหน้า)
+    # Lagged Deltas (difference from 1 preceding cycle)
     "vibration_delta_1",
     "temp_delta_1",
     "motor_current_delta_1",
     # Mechanical Health Indicators
     "crest_factor_est",     # Vibration Peak / Rolling Mean
-    "energy_proxy"          # Current * Pressure (กำลังงานรวมโดยประมาณ)
+    "energy_proxy"          # Current * Pressure (estimated total power)
 ]
 
 def extract_batch_features(df: pd.DataFrame) -> pd.DataFrame:
     """
-    สกัดฟีเจอร์สำหรับข้อมูลประวัติศาสตร์จำนวนมาก (Batch Training)
-    ใช้การจัดกลุ่มตามเครื่องจักร (machine_id) และเรียงลำดับเวลา เพื่อป้องกันข้อมูลข้ามเครื่อง
+    Extract features for large historical datasets (Batch Training).
+    Group by machine_id and sort chronologically to prevent cross-machine contamination.
     """
     df = df.copy()
     if "timestamp" in df.columns:
         df["timestamp"] = pd.to_datetime(df["timestamp"])
         df = df.sort_values(by=["machine_id", "timestamp"]).reset_index(drop=True)
 
-    # คำนวณ Rolling Statistics และ Lag ต่อเครื่องจักร
+    # Compute rolling statistics and lag per machine
     grouped = df.groupby("machine_id")
 
     # 1. Rolling Mean & Std (Window = 5 cycles)
@@ -70,30 +70,30 @@ def extract_batch_features(df: pd.DataFrame) -> pd.DataFrame:
         lambda x: x.rolling(window=5, min_periods=1).mean()
     )
 
-    # 2. Lagged Deltas (อัตราการเปลี่ยนแปลงเมื่อเทียบกับ cycle ก่อนหน้า: x_t - x_{t-1})
+    # 2. Lagged Deltas (rate of change relative to previous cycle: x_t - x_{t-1})
     df["vibration_delta_1"] = grouped["vibration_rms"].diff().fillna(0.0)
     df["temp_delta_1"] = grouped["bearing_temp_c"].diff().fillna(0.0)
     df["motor_current_delta_1"] = grouped["motor_current_amp"].diff().fillna(0.0)
 
     # 3. Mechanical Health Indicators (Crest Factor & Mechanical Load Proxy)
-    # Crest Factor ประมาณการจากความสั่นสะเทือนปัจจุบันเทียบกับค่าเฉลี่ย
+    # Estimated Crest Factor based on current vibration relative to the rolling mean
     df["crest_factor_est"] = df["vibration_rms"] / (df["vibration_rms_roll_mean_5"] + 1e-5)
-    # ดัชนีพลังงานรวมของมอเตอร์และไฮดรอลิก
+    # Combined motor and hydraulic energy index
     df["energy_proxy"] = (df["motor_current_amp"] * df["hydraulic_pressure_bar"]) / 1000.0
 
     return df
 
 def extract_single_event_features(current_event: Dict[str, Any], history_window: List[Dict[str, Any]]) -> pd.DataFrame:
     """
-    สกัดฟีเจอร์สำหรับ Online Streaming Scoring ทีละ Event
-    โดยรับ Event ปัจจุบันและ Buffer บันทึกล่าสุด 5-10 Events ของเครื่องจักรนั้นๆ
-    เพื่อให้มั่นใจว่า Features ที่ได้ตรงกับที่โมเดลเทรนมา 100% (No Train-Serving Skew)
+    Extract features for online streaming scoring on a per-event basis.
+    Accepts the current event and a buffer of the latest 5-10 events for that machine,
+    ensuring features match training data exactly (No Train-Serving Skew).
     """
-    # รวบรวม window ปัจจุบัน
+    # Aggregate current window
     all_events = history_window + [current_event]
     window_df = pd.DataFrame(all_events)
     
-    # คำนวณสถิติ
+    # Compute statistics
     vib_series = window_df["vibration_rms"].astype(float)
     temp_series = window_df["bearing_temp_c"].astype(float)
     curr_series = window_df["motor_current_amp"].astype(float)

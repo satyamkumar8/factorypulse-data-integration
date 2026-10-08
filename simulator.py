@@ -5,7 +5,7 @@ import argparse
 import psycopg2
 from datetime import datetime, timedelta
 
-# กำหนด Baseline ทางกายภาพของเครื่องจักรแต่ละประเภท (ตามมาตรฐานอุตสาหกรรมชิ้นส่วนยานยนต์/สปริง NHK Spring)
+# Physical baseline definition for each machine type (automotive parts / NHK Spring industry standards)
 MACHINE_PROFILES = {
     "CNC_A": {
         "cycle_time_range": (9.0, 11.5),
@@ -36,7 +36,7 @@ MACHINE_PROFILES = {
 lines = ["LINE_01", "LINE_02"]
 machines = ["CNC_A", "CNC_B", "ROBOT_ARM"]
 
-# เก็บสถานะการสึกหรอสะสม (Degradation State: 0.00 = ใหม่เอี่ยม, 1.00 = สึกหรอสูงสุด)
+# Track cumulative degradation state (Degradation State: 0.00 = brand new, 1.00 = maximum wear)
 machine_wear = {f"{l}_{m}": random.uniform(0.05, 0.25) for l in lines for m in machines}
 
 def generate_telemetry_record(line, machine, current_time=None):
@@ -47,12 +47,12 @@ def generate_telemetry_record(line, machine, current_time=None):
     profile = MACHINE_PROFILES.get(machine, MACHINE_PROFILES["CNC_A"])
     wear = machine_wear[m_key]
 
-    # การสะสมความสึกหรอเพิ่มขึ้นในแต่ละ Cycle (Tool Wear & Bearing Fatigue)
+    # Cumulative wear increase per cycle (Tool Wear & Bearing Fatigue)
     wear += random.uniform(0.001, 0.003)
     
-    # กำหนดสถานะเครื่องจักร: ถ้าสึกหรอสูง โอกาสเกิดปัญหาและของเสียจะสูงขึ้นอย่างมีนัยสำคัญ
+    # Machine status assignment: high wear significantly increases chances of faults and defects
     if wear > 0.85:
-        status_weights = [50, 20, 15, 10, 5]  # มีโอกาส Tool Change หรือ Breakdown สูง
+        status_weights = [50, 20, 15, 10, 5]  # High probability of Tool Change or Breakdown
     elif wear > 0.60:
         status_weights = [70, 10, 10, 5, 5]
     else:
@@ -60,37 +60,37 @@ def generate_telemetry_record(line, machine, current_time=None):
 
     status = random.choices([1, 2, 3, 4, 5], weights=status_weights)[0]
 
-    # หากมีการบำรุงรักษา (Tool Change หรือ Maintenance) ความสึกหรอจะถูกรีเซ็ต
+    # If maintenance occurs (Tool Change or Maintenance), wear is reset
     if status == 2:
         machine_wear[m_key] = random.uniform(0.02, 0.08)
         wear = machine_wear[m_key]
     else:
         machine_wear[m_key] = min(wear, 1.0)
 
-    # คำนวณตัวแปรทางฟิสิกส์ตามสถานะและการสึกหรอ
-    if status == 1:  # ทำงานปกติ
+    # Compute physics parameters based on status and wear
+    if status == 1:  # Normal operation
         cycle_time = round(random.uniform(*profile["cycle_time_range"]) + (wear * 1.5), 2)
         good_units = random.randint(1, 3)
         
-        # อิทธิพลของการสึกหรอต่อคุณภาพชิ้นงาน (Virtual Metrology Ground Truth)
+        # Influence of wear on part quality (Virtual Metrology Ground Truth)
         defect_prob = 0.01 + (0.40 * (wear ** 3))
         defect_units = 1 if random.random() < defect_prob else 0
         
-        # ฟิสิกส์ของเซนเซอร์ขณะทำงาน
+        # Sensor physics during operation
         vibration_rms = round(profile["vibration_rms_base"] * (1.0 + wear * 0.8) + random.gauss(0, 0.05), 3)
-        # Kurtosis: ปกติอยู่ที่ ~3.0 แต่ถ้าเริ่มมี Micro-crack จากการสึกหรอจะพุ่งขึ้น
+        # Kurtosis: normally around ~3.0, but spikes if micro-cracks develop from wear
         vibration_kurtosis = round(3.0 + (wear ** 2) * 4.5 + random.uniform(-0.2, 0.4), 3)
         bearing_temp_c = round(profile["bearing_temp_base"] + (wear * 18.0) + random.gauss(0, 0.5), 2)
         press_force_kn = round(profile["press_force_base"] * (1.0 + (wear - 0.5) * 0.15) + random.gauss(0, 1.2), 2)
         motor_current_amp = round(profile["motor_current_base"] * (1.0 + wear * 0.35) + random.gauss(0, 0.3), 2)
         hydraulic_pressure_bar = round(profile["hydraulic_pressure_base"] + random.gauss(0, 1.5), 2)
-    else:  # Downtime หรือมีปัญหา
+    else:  # Downtime or fault condition
         cycle_time = round(random.uniform(15.0, 45.0), 2)
         good_units = 0
         defect_units = 0
         
-        # ค่าเซนเซอร์เมื่อเกิด Fault
-        if status == 3:  # Mechanical Jam (กระแสไฟและแรงสั่นพุ่งสูงเฉียบพลัน)
+        # Sensor values during fault state
+        if status == 3:  # Mechanical Jam (sudden surge in electric current and vibration)
             vibration_rms = round(profile["vibration_rms_base"] * 2.5 + random.uniform(0.5, 1.5), 3)
             vibration_kurtosis = round(random.uniform(7.0, 14.0), 3)
             bearing_temp_c = round(profile["bearing_temp_base"] + 25.0 + random.uniform(0, 5), 2)
