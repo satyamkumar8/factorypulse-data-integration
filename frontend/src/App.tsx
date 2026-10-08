@@ -5,7 +5,7 @@ import { HomePage } from './pages/HomePage';
 import { MonitorPage } from './pages/MonitorPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { MachineHealth, TelemetryEvent, HourlyOEE, KPISummary } from './types';
-import { LanguageProvider } from './context/LanguageContext';
+
 
 const AppContent: React.FC = () => {
   const [machines, setMachines] = useState<MachineHealth[]>([]);
@@ -239,9 +239,7 @@ const AppContent: React.FC = () => {
 
 export const App: React.FC = () => {
   return (
-    <LanguageProvider>
-      <AppContent />
-    </LanguageProvider>
+    <AppContent />
   );
 };
 
